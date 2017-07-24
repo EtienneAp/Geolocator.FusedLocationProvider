@@ -32,7 +32,7 @@ namespace Sample
             geolocator.PositionChanged += GeolocatorOnPositionChanged;
 
             SetValues();
-         }
+        }
 
         private void SetValues()
         {
@@ -55,7 +55,7 @@ namespace Sample
 
         private async void Start(object sender, EventArgs eventArgs)
         {
-            await geolocator.StartListeningAsync(0, 0);
+            await geolocator.StartListeningAsync(TimeSpan.FromMilliseconds(0), 0);
             SetValues();
         }
 
