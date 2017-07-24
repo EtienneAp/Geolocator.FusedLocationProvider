@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Android.App;
@@ -25,9 +26,9 @@ namespace GeoFusedLocationProvider
             {
                 if (client != null && client.IsConnected)
                 {
-                    var avalibility = LocationServices.FusedLocationApi.GetLocationAvailability(client);
-                    if (avalibility != null)
-                        return avalibility.IsLocationAvailable;
+                    var availability = LocationServices.FusedLocationApi.GetLocationAvailability(client);
+                    if (availability != null)
+                        return availability.IsLocationAvailable;
                 }
 
                 return IsLocationServicesEnabled();
@@ -51,10 +52,11 @@ namespace GeoFusedLocationProvider
             callbacks = new GoogleCallbacks();
             callbacks.Connected += Connected;
             callbacks.ConnectionFailed += ConnectionFailed;
+            callbacks.ConnectionFailed += ConnectionFailed;
             callbacks.ConnectionSuspended += ConnectionSuspended;
             callbacks.LocationChanged += LocationChanged;
 
-            client = 
+            client =
                 new GoogleApiClient.Builder(Application.Context, callbacks, callbacks)
                 .AddApi(LocationServices.API)
                 .Build();
@@ -94,57 +96,6 @@ namespace GeoFusedLocationProvider
         private void Connected(object sender, Bundle bundle)
         {
             System.Diagnostics.Debug.WriteLine("Connected");
-        }
-
-        public async Task<Position> GetPositionAsync(int timeoutMilliseconds = -1, CancellationToken? cancelToken = null, bool includeHeading = false)
-        {
-            if (timeoutMilliseconds <= 0 && timeoutMilliseconds != Timeout.Infinite)
-                throw new ArgumentOutOfRangeException("timeoutMilliseconds", "timeout must be greater than or equal to 0");
-
-            if (!cancelToken.HasValue)
-                cancelToken = CancellationToken.None;
-
-            if (IsListening)
-            {
-                if (LastPosition != null)
-                    return LastPosition;
-                else
-                    return await NextLocationAsync();
-            }
-            else
-            {
-                var nextLocation = NextLocationAsync();
-                var startListening = StartListeningAsync(500, 10);
-
-                await startListening;
-                var position = await nextLocation;
-                await StopListeningAsync();
-                return position;
-            }
-        }
-
-        public async Task<bool> StartListeningAsync(int minTime, double minDistance, bool includeHeading = false)
-        {
-            if (!client.IsConnected)
-                await ConnectAsync();
-
-            if (!client.IsConnected)
-                return await Task.FromResult(false);
-
-            var locationRequest = new LocationRequest();
-            locationRequest.SetSmallestDisplacement(Convert.ToInt64(minDistance))
-                .SetFastestInterval(minTime)
-                .SetInterval(minTime * 3)
-                .SetMaxWaitTime(minTime * 6)
-                .SetPriority(GetPriority());
-
-            var result = await LocationServices.FusedLocationApi
-                .RequestLocationUpdatesAsync(client, locationRequest, callbacks);
-
-            if (result.IsSuccess)
-                IsListening = true;
-
-            return result.IsSuccess;
         }
 
         public async Task<bool> StopListeningAsync()
@@ -212,7 +163,7 @@ namespace GeoFusedLocationProvider
                 try
                 {
                     locationMode = Android.Provider.Settings.Secure.GetInt(
-                        Application.Context.ContentResolver, 
+                        Application.Context.ContentResolver,
                         Android.Provider.Settings.Secure.LocationMode);
                 }
                 catch (Exception e)
@@ -239,6 +190,70 @@ namespace GeoFusedLocationProvider
 
             callbacks?.Dispose();
             client?.Dispose();
+        }
+
+        public async Task<Position> GetLastKnownLocationAsync()
+        {
+            return LastPosition;
+        }
+
+        public async Task<Position> GetPositionAsync(TimeSpan? timeout = default(TimeSpan?), CancellationToken? cancelToken = default(CancellationToken?), bool includeHeading = false)
+        {
+            var timeoutMilliseconds = timeout.HasValue ? (int)timeout.Value.TotalMilliseconds : Timeout.Infinite;
+
+            if (timeoutMilliseconds <= 0 && timeoutMilliseconds != Timeout.Infinite)
+                throw new ArgumentOutOfRangeException(nameof(timeout), "timeout must be greater than or equal to 0");
+
+            if (!cancelToken.HasValue)
+                cancelToken = CancellationToken.None;
+
+            if (IsListening)
+            {
+                if (LastPosition != null)
+                    return LastPosition;
+                else
+                    return await NextLocationAsync();
+            }
+            else
+            {
+                var nextLocation = NextLocationAsync();
+                var startListening = StartListeningAsync(TimeSpan.FromMilliseconds(500), 10);
+
+                await startListening;
+                var position = await nextLocation;
+                await StopListeningAsync();
+                return position;
+            }
+        }
+
+        public async Task<IEnumerable<Plugin.Geolocator.Abstractions.Address>> GetAddressesForPositionAsync(Position position, string mapKey = null)
+        {
+            return null;
+        }
+
+        public async Task<bool> StartListeningAsync(TimeSpan minTime, double minDistance, bool includeHeading = false, ListenerSettings listenerSettings = null)
+        {
+            if (!client.IsConnected)
+                await ConnectAsync();
+
+            if (!client.IsConnected)
+                return await Task.FromResult(false);
+
+            var minTimeMilliseconds = (long)minTime.TotalMilliseconds;
+            var locationRequest = new LocationRequest();
+            locationRequest.SetSmallestDisplacement(Convert.ToInt64(minDistance))
+                           .SetFastestInterval(minTimeMilliseconds)
+                           .SetInterval(minTimeMilliseconds)
+                           .SetMaxWaitTime(minTimeMilliseconds * 6)
+                           .SetPriority(GetPriority());
+
+            var result = await LocationServices.FusedLocationApi
+                .RequestLocationUpdatesAsync(client, locationRequest, callbacks);
+
+            if (result.IsSuccess)
+                IsListening = true;
+
+            return result.IsSuccess;
         }
     }
 }
